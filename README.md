@@ -1,6 +1,6 @@
 # Chihiros LED Control
 
-This repository contains a python **CLI** script as well as a **Home Assistant integration** that can be used to control Chihiros LEDs for aquariums via bluetooth without the vendor app. For this purpose, the protocol to control the LED has been reversed engineered with the help of decompiling the old *Magic App* as well as sniffing and analyzing of bluetooth packages that are sent by the new *My Chihiros App*. The new app is based on flutter and only contains a binary that can not easily be analyzed.
+This repository contains a python **CLI** script, a **Web UI**, and a **Home Assistant integration** that can be used to control Chihiros LEDs for aquariums via bluetooth without the vendor app. For this purpose, the protocol to control the LED has been reversed engineered with the help of decompiling the old *Magic App* as well as sniffing and analyzing of bluetooth packages that are sent by the new *My Chihiros App*. The new app is based on flutter and only contains a binary that can not easily be analyzed.
 
 ## Supported Devices
 - [Chihiros LED A2](https://www.chihirosaquaticstudio.com/products/chihiros-a-ii-built-in-bluetooth)
@@ -11,6 +11,48 @@ This repository contains a python **CLI** script as well as a **Home Assistant i
 - Chihiros Z Light TINY
 - other LED models might work as well but are not tested
 
+## Quick Start (macOS)
+
+```bash
+# Clone and install
+git clone https://github.com/rfcampbell/chihiros-led-control.git
+cd chihiros-led-control
+python3 -m venv venv
+source venv/bin/activate
+pip install -e '.[web]'
+# or just: pip install -e .  and  pip install flask
+```
+
+> **Note:** On macOS, Bluetooth device addresses are UUIDs (e.g. `C0EF8802-A773-42FA-2015-EBA6EAFB0A2D`). Use `chihirosctl list-devices` to find yours.
+
+## Web UI
+
+A browser-based control panel for your Chihiros light with real-time RGBW sliders, power control, and schedule management.
+
+```bash
+# Start the web UI (default address: C0EF8802-A773-42FA-2015-EBA6EAFB0A2D)
+chihiros-web
+
+# Or specify a different device address
+chihiros-web --address YOUR-DEVICE-ADDRESS
+
+# Or use an environment variable
+export CHIHIROS_ADDRESS=YOUR-DEVICE-ADDRESS
+chihiros-web
+
+# Options
+chihiros-web --host 0.0.0.0 --port 8080 --debug
+```
+
+Then open [http://127.0.0.1:5000](http://127.0.0.1:5000) in your browser.
+
+**Features:**
+- Power on/off
+- Individual RGBW brightness sliders (0–100) with real-time BLE control
+- Master brightness slider that scales all channels proportionally
+- Schedule management: set sunrise/sunset times, RGB brightness, ramp-up, and weekdays
+- Reset schedules and enable auto mode
+- Live connection status indicator
 
 ## Using the Home Assistant integration
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=themicdiet&repository=chihiros-led-control&category=Integration)
@@ -29,6 +71,7 @@ This repository contains a python **CLI** script as well as a **Home Assistant i
 ## Requirements
 - a device with bluetooth LE support for sending the commands to the LED
 - [Python 3](https://www.python.org/downloads/) with pip
+- For the web UI: `flask` (`pip install flask`)
 
 ## Using the CLI
 ```bash
