@@ -34,11 +34,11 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 include = [
-  "custom_components*",
+  "chihiros_led_control*",
 ]
 
 [tool.setuptools_scm]
 
 
 [project.scripts]
-chihirosctl = "custom_components.chihiros.chihiros_led_control.chihirosctl:app"
+chihirosctl = "chihiros_led_control.chihirosctl:app"
