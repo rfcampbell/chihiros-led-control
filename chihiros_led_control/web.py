@@ -150,6 +150,25 @@ def add_schedule():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/schedule/remove", methods=["POST"])
+def remove_schedule():
+    data = request.json or {}
+    try:
+        dev = get_device()
+        sunrise = datetime.strptime(data["sunrise"], "%H:%M")
+        sunset = datetime.strptime(data["sunset"], "%H:%M")
+        ramp = int(data.get("ramp_up", 0))
+        weekday_strs = data.get("weekdays", ["everyday"])
+
+        from .weekday_encoding import WeekdaySelect
+        weekdays = [WeekdaySelect(w) for w in weekday_strs]
+
+        run_async(dev.remove_setting(sunrise, sunset, ramp, weekdays))
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/reset-schedules", methods=["POST"])
 def reset_schedules():
     try:
@@ -341,12 +360,81 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <button class="btn btn-danger" onclick="resetSchedules()">Reset All</button>
       <button class="btn" onclick="enableAuto()">Enable Auto Mode</button>
     </div>
+    <div id="schedule-list" style="margin-top:16px"></div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
 <script>
+const LS_SLIDERS = 'chihiros_sliders';
+const LS_SCHEDULES = 'chihiros_schedules';
 let debounceTimers = {};
 let ratios = {red: 0, green: 0, blue: 0, white: 0};
+
+function saveSliders() {
+  const data = {master: parseInt(document.getElementById('master').value)};
+  for (const c of ['red','green','blue','white']) data[c] = ratios[c];
+  localStorage.setItem(LS_SLIDERS, JSON.stringify(data));
+}
+
+function loadSliders() {
+  try {
+    const data = JSON.parse(localStorage.getItem(LS_SLIDERS));
+    if (!data) return;
+    if (data.master !== undefined) {
+      document.getElementById('master').value = data.master;
+      document.getElementById('master-val').textContent = data.master;
+    }
+    for (const c of ['red','green','blue','white']) {
+      if (data[c] !== undefined) {
+        document.getElementById(c).value = data[c];
+        document.getElementById(c+'-val').textContent = data[c];
+        ratios[c] = data[c];
+      }
+    }
+  } catch(e) {}
+}
+
+function getSchedules() {
+  try { return JSON.parse(localStorage.getItem(LS_SCHEDULES)) || []; }
+  catch(e) { return []; }
+}
+
+function saveSchedules(list) {
+  localStorage.setItem(LS_SCHEDULES, JSON.stringify(list));
+  renderSchedules();
+}
+
+function renderSchedules() {
+  const list = getSchedules();
+  const el = document.getElementById('schedule-list');
+  if (!list.length) { el.innerHTML = ''; return; }
+  let html = '<h3 style="font-size:.9rem;color:var(--accent);margin-bottom:8px">Saved Schedules</h3>';
+  list.forEach((s, i) => {
+    const days = s.weekdays.includes('everyday') ? 'Every day' : s.weekdays.map(d=>d.slice(0,3)).join(', ');
+    html += '<div style="background:var(--bg);padding:10px;border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">'
+      + '<div style="font-size:.85rem">'
+      + '<strong>' + s.sunrise + ' → ' + s.sunset + '</strong> '
+      + '<span style="opacity:.7">R:' + s.red + ' G:' + s.green + ' B:' + s.blue + '</span> '
+      + (s.ramp_up > 0 ? '<span style="opacity:.7">ramp:' + s.ramp_up + 'm</span> ' : '')
+      + '<br><span style="opacity:.5;font-size:.75rem">' + days + '</span>'
+      + '</div>'
+      + '<button onclick="removeSchedule(' + i + ')" style="background:var(--red);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:.8rem">✕</button>'
+      + '</div>';
+  });
+  el.innerHTML = html;
+}
+
+async function removeSchedule(idx) {
+  const list = getSchedules();
+  const s = list[idx];
+  const d = await api('/api/schedule/remove', {
+    sunrise: s.sunrise, sunset: s.sunset,
+    ramp_up: s.ramp_up, weekdays: s.weekdays
+  });
+  list.splice(idx, 1);
+  saveSchedules(list);
+  if (d) toast('Schedule removed', true);
+}
 
 function toast(msg, ok) {
   const t = document.getElementById('toast');
@@ -386,12 +474,14 @@ function updateSliders(ch) {
     document.getElementById(c+'-val').textContent = ch[c];
     ratios[c] = ch[c];
   }
+  saveSliders();
 }
 
 function colorChange(color, val) {
   val = parseInt(val);
   document.getElementById(color+'-val').textContent = val;
   ratios[color] = val;
+  saveSliders();
   clearTimeout(debounceTimers[color]);
   debounceTimers[color] = setTimeout(() => {
     api('/api/color', {color, brightness: val});
@@ -401,6 +491,7 @@ function colorChange(color, val) {
 function masterChange(val) {
   val = parseInt(val);
   document.getElementById('master-val').textContent = val;
+  saveSliders();
   clearTimeout(debounceTimers._master);
   debounceTimers._master = setTimeout(() => {
     api('/api/master', {brightness: val, ratios}).then(d => {
@@ -409,6 +500,7 @@ function masterChange(val) {
           document.getElementById(c).value = d.channels[c];
           document.getElementById(c+'-val').textContent = d.channels[c];
         }
+        saveSliders();
       }
     });
   }, 200);
@@ -417,7 +509,7 @@ function masterChange(val) {
 async function addSchedule() {
   const weekdays = [];
   document.querySelectorAll('.weekdays input:checked').forEach(cb => weekdays.push(cb.value));
-  const d = await api('/api/schedule', {
+  const sched = {
     sunrise: document.getElementById('sunrise').value,
     sunset: document.getElementById('sunset').value,
     red: parseInt(document.getElementById('sched-r').value),
@@ -425,13 +517,22 @@ async function addSchedule() {
     blue: parseInt(document.getElementById('sched-b').value),
     ramp_up: parseInt(document.getElementById('sched-ramp').value),
     weekdays: weekdays.length ? weekdays : ['everyday']
-  });
-  if (d) toast('Schedule added', true);
+  };
+  const d = await api('/api/schedule', sched);
+  if (d) {
+    const list = getSchedules();
+    list.push(sched);
+    saveSchedules(list);
+    toast('Schedule added', true);
+  }
 }
 
 async function resetSchedules() {
   const d = await api('/api/reset-schedules', {});
-  if (d) toast('Schedules reset', true);
+  if (d) {
+    saveSchedules([]);
+    toast('Schedules reset', true);
+  }
 }
 
 async function enableAuto() {
@@ -439,6 +540,8 @@ async function enableAuto() {
   if (d) toast('Auto mode enabled', true);
 }
 
+loadSliders();
+renderSchedules();
 checkStatus();
 setInterval(checkStatus, 15000);
 </script>
