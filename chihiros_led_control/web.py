@@ -7,7 +7,7 @@ import os
 import threading
 from datetime import datetime
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, make_response
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,9 @@ def get_device():
 
 @app.route("/")
 def index():
-    return HTML_PAGE
+    resp = make_response(HTML_PAGE)
+    resp.headers['Content-Type'] = 'text/html; charset=utf-8'
+    return resp
 
 
 @app.route("/api/status")
